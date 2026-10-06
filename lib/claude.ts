@@ -1,12 +1,33 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { eq } from "drizzle-orm";
 import { z } from "zod";
+
+import { decrypt } from "@/lib/crypto";
+import { db, schema } from "@/lib/db";
 
 export const CLAUDE_MODEL = process.env.CLAUDE_MODEL ?? "claude-sonnet-5-5";
 
-let client: Anthropic | undefined;
-function getClient() {
-  client ??= new Anthropic(); // lee ANTHROPIC_API_KEY
-  return client;
+let platformClient: Anthropic | undefined;
+
+/**
+ * Cliente de Claude para un usuario: su API key propia (descifrada) si la tiene
+ * y, si no, la ANTHROPIC_API_KEY de la plataforma.
+ */
+export async function getClaudeClient(userId: string) {
+  const user = await db.query.users.findFirst({
+    columns: { anthropicApiKey: true },
+    where: eq(schema.users.id, userId),
+  });
+  if (user?.anthropicApiKey) {
+    try {
+      return new Anthropic({ apiKey: decrypt(user.anthropicApiKey) });
+    } catch {
+      // No caemos a la key de la plataforma en silencio: sería facturar al dueño sin avisar.
+      throw new Error("Tu API key guardada no se pudo leer. Vuelve a guardarla en Ajustes.");
+    }
+  }
+  platformClient ??= new Anthropic(); // lee ANTHROPIC_API_KEY
+  return platformClient;
 }
 
 export const extractedEventSchema = z.object({
@@ -61,8 +82,9 @@ function systemPrompt() {
   return `Extraes eventos de calendario (fechas, horas, lugares) de páginas web e imágenes. Hoy es ${hoy}. Resuelve fechas relativas y sin año con esa referencia. No inventes datos: si no hay eventos, devuelve una lista vacía. Responde siempre llamando a la herramienta ${TOOL_NAME}.`;
 }
 
-async function extract(content: Anthropic.ContentBlockParam[]) {
-  const res = await getClient().messages.create({
+async function extract(userId: string, content: Anthropic.ContentBlockParam[]) {
+  const client = await getClaudeClient(userId);
+  const res = await client.messages.create({
     model: CLAUDE_MODEL,
     max_tokens: 4096,
     system: systemPrompt(),
@@ -79,8 +101,8 @@ async function extract(content: Anthropic.ContentBlockParam[]) {
   });
 }
 
-export function extractFromText(text: string, origin: string) {
-  return extract([
+export function extractFromText(userId: string, text: string, origin: string) {
+  return extract(userId, [
     {
       type: "text",
       text: `Contenido de ${origin}:\n\n${text.slice(0, 60_000)}`,
@@ -88,8 +110,8 @@ export function extractFromText(text: string, origin: string) {
   ]);
 }
 
-export function extractFromImageUrl(url: string) {
-  return extract([
+export function extractFromImageUrl(userId: string, url: string) {
+  return extract(userId, [
     { type: "image", source: { type: "url", url } },
     { type: "text", text: "Extrae los eventos que aparecen en esta imagen." },
   ]);
@@ -97,8 +119,8 @@ export function extractFromImageUrl(url: string) {
 
 export type ImageMediaType = "image/jpeg" | "image/png" | "image/gif" | "image/webp";
 
-export function extractFromImageData(base64: string, mediaType: ImageMediaType) {
-  return extract([
+export function extractFromImageData(userId: string, base64: string, mediaType: ImageMediaType) {
+  return extract(userId, [
     { type: "image", source: { type: "base64", media_type: mediaType, data: base64 } },
     { type: "text", text: "Extrae los eventos que aparecen en esta imagen." },
   ]);

@@ -3,15 +3,9 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 
 import { auth } from "@/auth";
-import {
-  extractFromImageData,
-  extractFromImageUrl,
-  extractFromText,
-  type ExtractedEvent,
-  type ImageMediaType,
-} from "@/lib/claude";
+import { extractFromImageData, type ImageMediaType } from "@/lib/claude";
 import { db, schema } from "@/lib/db";
-import { assertPublicHttpUrl, fetchPageText } from "@/lib/fetch-page";
+import { processSource, saveEvents } from "@/lib/procesar";
 
 export const maxDuration = 60;
 
@@ -19,9 +13,9 @@ const IMAGE_TYPES = ["image/jpeg", "image/png", "image/gif", "image/webp"];
 
 /**
  * POST /api/procesar
- *  - JSON: { sourceId } → procesa la URL (o URL de imagen) de la fuente
+ *  - JSON: { sourceId } → revisa la URL (o imagen) de la fuente
  *  - multipart: sourceId + file → procesa una imagen subida
- * Guarda los eventos detectados como "pendiente" (bandeja).
+ * Guarda los eventos nuevos como "pendiente" (bandeja); los duplicados se ignoran.
  */
 export async function POST(req: Request) {
   const session = await auth();
@@ -49,47 +43,18 @@ export async function POST(req: Request) {
   if (!source) return NextResponse.json({ error: "Fuente no encontrada" }, { status: 404 });
 
   try {
-    let found: ExtractedEvent[];
     if (file) {
       if (!IMAGE_TYPES.includes(file.type) || file.size > 5 * 1024 * 1024) {
         return NextResponse.json({ error: "Imagen no válida (máx. 5 MB)" }, { status: 400 });
       }
       const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-      found = await extractFromImageData(base64, file.type as ImageMediaType);
-    } else if (source.tipo === "imagen") {
-      assertPublicHttpUrl(source.url);
-      found = await extractFromImageUrl(source.url);
-    } else {
-      found = await extractFromText(await fetchPageText(source.url), source.url);
+      const found = await extractFromImageData(userId, base64, file.type as ImageMediaType);
+      const nuevos = await saveEvents(source, found);
+      return NextResponse.json({ eventos: nuevos });
     }
-
-    if (found.length) {
-      await db.insert(schema.events).values(
-        found.map((e) => ({
-          userId,
-          sourceId: source.id,
-          titulo: e.titulo,
-          descripcion: e.descripcion ?? null,
-          ubicacion: e.ubicacion ?? null,
-          inicio: e.inicio,
-          fin: e.fin ?? null,
-          todoElDia: e.todoElDia,
-          confianza: Math.round(e.confianza),
-          urlOrigen: source.url,
-        })),
-      );
-    }
-    await db
-      .update(schema.sources)
-      .set({ ultimaRevision: new Date(), estado: "activa", ultimoError: null })
-      .where(eq(schema.sources.id, source.id));
-    return NextResponse.json({ eventos: found.length });
+    const r = await processSource(source, { force: true });
+    return NextResponse.json({ eventos: r.nuevos });
   } catch (err) {
-    const message = err instanceof Error ? err.message : "Error desconocido";
-    await db
-      .update(schema.sources)
-      .set({ estado: "error", ultimoError: message })
-      .where(eq(schema.sources.id, source.id));
-    return NextResponse.json({ error: message }, { status: 502 });
+    return NextResponse.json({ error: err instanceof Error ? err.message : "Error desconocido" }, { status: 502 });
   }
 }

@@ -1,6 +1,6 @@
 "use client";
 
-import { CalendarDays, Inbox, Link2 } from "lucide-react";
+import { CalendarDays, Inbox, Link2, Settings } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
@@ -10,6 +10,7 @@ const items = [
   { href: "/fuentes", label: "Fuentes", icon: Link2 },
   { href: "/bandeja", label: "Bandeja", icon: Inbox },
   { href: "/calendario", label: "Calendario", icon: CalendarDays },
+  { href: "/ajustes", label: "Ajustes", icon: Settings },
 ];
 
 export function DashboardNav() {

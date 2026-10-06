@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const id = () =>
   text("id")
@@ -41,6 +41,8 @@ export const sources = sqliteTable("sources", {
   estado: text("estado", { enum: SOURCE_STATES }).notNull().default("activa"),
   ultimoError: text("ultimo_error"),
   ultimaRevision: integer("ultima_revision", { mode: "timestamp" }),
+  // SHA-256 del contenido de la última revisión: si no cambia, no se llama a Claude
+  lastContentHash: text("last_content_hash"),
   createdAt: createdAt(),
 });
 
@@ -51,7 +53,9 @@ export const EVENT_STATES = [
   "sincronizado",
 ] as const;
 
-export const events = sqliteTable("events", {
+export const events = sqliteTable(
+  "events",
+  {
   id: id(),
   userId: text("user_id")
     .notNull()
@@ -73,8 +77,12 @@ export const events = sqliteTable("events", {
   confianza: integer("confianza"),
   estado: text("estado", { enum: EVENT_STATES }).notNull().default("pendiente"),
   googleEventId: text("google_event_id"),
+  // SHA-256 de (usuario, título, inicio): evita duplicar el mismo evento entre revisiones y fuentes
+  dedupeHash: text("dedupe_hash"),
   createdAt: createdAt(),
-});
+  },
+  (t) => [uniqueIndex("events_user_dedupe_idx").on(t.userId, t.dedupeHash)],
+);
 
 export type User = typeof users.$inferSelect;
 export type Source = typeof sources.$inferSelect;

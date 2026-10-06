@@ -13,7 +13,12 @@ export default {
       if (isAuthPage) {
         return logged ? Response.redirect(new URL("/bandeja", request.nextUrl)) : true;
       }
-      const isPublic = pathname === "/" || pathname.startsWith("/api/auth");
+      // /api/cron y el feed .ics se autentican por su cuenta (Bearer / token en la URL)
+      const isPublic =
+        pathname === "/" ||
+        pathname.startsWith("/api/auth") ||
+        pathname.startsWith("/api/cron/") ||
+        /^\/api\/calendario\/[^/]+\/feed\.ics$/.test(pathname);
       return isPublic || logged;
     },
   },

@@ -21,6 +21,8 @@ export const users = sqliteTable("users", {
   // Token de refresco de Google para sincronizar con Google Calendar
   googleRefreshToken: text("google_refresh_token"),
   googleCalendarId: text("google_calendar_id").notNull().default("primary"),
+  // API key propia de Anthropic, cifrada con AES-256-GCM (ver lib/crypto.ts)
+  anthropicApiKey: text("anthropic_api_key"),
   createdAt: createdAt(),
 });
 

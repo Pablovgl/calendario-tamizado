@@ -23,6 +23,8 @@ export const users = sqliteTable("users", {
   googleCalendarId: text("google_calendar_id").notNull().default("primary"),
   // API key propia de Anthropic, cifrada con AES-256-GCM (ver lib/crypto.ts)
   anthropicApiKey: text("anthropic_api_key"),
+  // Token secreto (aleatorio) de la URL pública del feed .ics; se puede regenerar
+  feedToken: text("feed_token").unique(),
   createdAt: createdAt(),
 });
 

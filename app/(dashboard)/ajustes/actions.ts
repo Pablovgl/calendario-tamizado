@@ -1,5 +1,7 @@
 "use server";
 
+import { randomBytes } from "node:crypto";
+
 import { eq } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 
@@ -32,5 +34,15 @@ export async function saveApiKey(_: SettingsState, form: FormData): Promise<Sett
 export async function deleteApiKey() {
   const userId = await requireUserId();
   await db.update(schema.users).set({ anthropicApiKey: null }).where(eq(schema.users.id, userId));
+  revalidatePath("/ajustes");
+}
+
+/** Crea (o regenera, invalidando la URL anterior) el token del feed .ics. */
+export async function regenerateFeedToken() {
+  const userId = await requireUserId();
+  await db
+    .update(schema.users)
+    .set({ feedToken: randomBytes(32).toString("base64url") })
+    .where(eq(schema.users.id, userId));
   revalidatePath("/ajustes");
 }

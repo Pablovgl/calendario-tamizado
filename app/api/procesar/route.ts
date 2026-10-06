@@ -55,12 +55,12 @@ export async function POST(req: Request) {
         return NextResponse.json({ error: "Imagen no válida (máx. 5 MB)" }, { status: 400 });
       }
       const base64 = Buffer.from(await file.arrayBuffer()).toString("base64");
-      found = await extractFromImageData(base64, file.type as ImageMediaType);
+      found = await extractFromImageData(userId, base64, file.type as ImageMediaType);
     } else if (source.tipo === "imagen") {
       assertPublicHttpUrl(source.url);
-      found = await extractFromImageUrl(source.url);
+      found = await extractFromImageUrl(userId, source.url);
     } else {
-      found = await extractFromText(await fetchPageText(source.url), source.url);
+      found = await extractFromText(userId, await fetchPageText(source.url), source.url);
     }
 
     if (found.length) {
